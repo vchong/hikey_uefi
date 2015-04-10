@@ -21,7 +21,7 @@ all: build-lloader build-fip build-boot-img build-nvme build-ptable
 
 clean: clean-bl1-bl2-bl31-fip clean-bl33 clean-lloader-ptable
 clean: clean-linux-dtb clean-boot-img clean-initramfs clean-optee-linuxdriver
-clean: clean-optee-client clean-bl32
+clean: clean-optee-client clean-bl32 clean-opteeos
 
 cleaner: clean cleaner-nvme cleaner-aarch64-gcc cleaner-busybox cleaner-strace
 
@@ -93,7 +93,8 @@ BUSYBOX_TARBALL = $(call filename,$(BUSYBOX_URL))
 BUSYBOX_DIR = $(BUSYBOX_TARBALL:.tar.bz2=)
 
 #AARCH64_GCC_URL = http://releases.linaro.org/14.04/components/toolchain/binaries/gcc-linaro-aarch64-linux-gnu-4.8-2014.04_linux.tar.xz
-AARCH64_GCC_URL = http://releases.linaro.org/14.08/components/toolchain/binaries/gcc-linaro-aarch64-linux-gnu-4.9-2014.08_linux.tar.xz
+#AARCH64_GCC_URL = http://releases.linaro.org/14.08/components/toolchain/binaries/gcc-linaro-aarch64-linux-gnu-4.9-2014.08_linux.tar.xz
+AARCH64_GCC_URL = http://releases.linaro.org/14.09/components/toolchain/binaries/gcc-linaro-aarch64-linux-gnu-4.9-2014.09_linux.tar.xz
 AARCH64_GCC_TARBALL = $(call filename,$(AARCH64_GCC_URL))
 AARCH64_GCC_DIR = $(AARCH64_GCC_TARBALL:.tar.xz=)
 aarch64-linux-gnu-gcc := toolchains/$(AARCH64_GCC_DIR)
@@ -110,9 +111,9 @@ downloads/$(AARCH64_GCC_TARBALL):
 
 toolchains/$(AARCH64_GCC_DIR): downloads/$(AARCH64_GCC_TARBALL)
 	$(ECHO) '  TAR     $@'
-	$(Q)rm -rf toolchains/$(AARCH64_GCC_DIR)
-	$(Q)cd toolchains && tar xf ../downloads/$(AARCH64_GCC_TARBALL)
-	$(Q)touch $@
+	@#$(Q)rm -rf toolchains/$(AARCH64_GCC_DIR)
+	@#$(Q)cd toolchains && tar xf ../downloads/$(AARCH64_GCC_TARBALL)
+	@#$(Q)touch $@
 
 cleaner-aarch64-gcc:
 	$(ECHO) '  CLEANER $@'
@@ -146,8 +147,11 @@ distclean-busybox:
 # UEFI
 #
 
-BL33 = edk2/Build/HiKey/RELEASE_GCC49/FV/BL33_AP_UEFI.fd
-EDK2_VARS = EDK2_ARCH=AARCH64 EDK2_DSC=HisiPkg/HiKeyPkg/HiKey.dsc EDK2_TOOLCHAIN=GCC49 EDK2_BUILD=RELEASE
+FASTBOOT = edk2/Build/HiKey/DEBUG_GCC49/AARCH64/AndroidFastbootApp.efi 
+#BL33 = edk2/Build/HiKey/RELEASE_GCC49/FV/BL33_AP_UEFI.fd
+BL33 = edk2/Build/HiKey/DEBUG_GCC49/FV/BL33_AP_UEFI.fd
+#EDK2_VARS = EDK2_ARCH=AARCH64 EDK2_DSC=HisiPkg/HiKeyPkg/HiKey.dsc EDK2_TOOLCHAIN=GCC49 EDK2_BUILD=RELEASE
+EDK2_VARS = EDK2_ARCH=AARCH64 EDK2_DSC=HisiPkg/HiKeyPkg/HiKey.dsc EDK2_TOOLCHAIN=GCC49 EDK2_BUILD=DEBUG
 
 .PHONY: build-bl33
 build-bl33 $(BL33): .edk2basetools $(aarch64-linux-gnu-gcc)
@@ -178,20 +182,29 @@ clean-edk2-basetools:
 # ARM Trusted Firmware
 #
 
-ATF = arm-trusted-firmware/build/hikey/release
+ATF = arm-trusted-firmware/build/hikey/debug
 BL1 = $(ATF)/bl1.bin
 BL2 = $(ATF)/bl2.bin
 BL31 = $(ATF)/bl31.bin
 # Uncomment to include OP-TEE OS image in fip.bin
-#BL32 = optee_os/out/arm32-plat-hikey/core/tee.bin
+BL32 = optee_os/out/arm32-plat-hisi/core/tee.bin
 FIP = $(ATF)/fip.bin
 
-ARMTF_FLAGS := PLAT=hikey LOG_LEVEL=50
+ARMTF_NOBL32_FLAGS := PLAT=hikey LOG_LEVEL=50 DEBUG=1 V=1 CRASH_REPORTING=1
+ARMTF_NOBL32_EXPORTS := BL33=$(PWD)/$(BL33) #CFLAGS=""
+
+ARMTF_FLAGS := PLAT=hikey LOG_LEVEL=50 DEBUG=1 V=1 CRASH_REPORTING=1
 ARMTF_EXPORTS := BL33=$(PWD)/$(BL33) #CFLAGS=""
 ifneq (,$(BL32))
-ARMTF_FLAGS += PLAT_TSP_LOCATION=dram SPD=opteed
+ARMTF_FLAGS += PLAT_TSP_LOCATION=tdram SPD=opteed
 ARMTF_EXPORTS += BL32=$(PWD)/$(BL32)
 endif
+
+define arm-tf-make-nobl32
+        $(ECHO) '  BUILD   build-$(strip $(1)) [$@]'
+        +$(Q)export $(ARMTF_NOBL32_EXPORTS) ; \
+	    $(MAKE) -C arm-trusted-firmware $(ARMTF_NOBL32_FLAGS) $(1)
+endef
 
 define arm-tf-make
         $(ECHO) '  BUILD   build-$(strip $(1)) [$@]'
@@ -218,9 +231,13 @@ endif
 ifneq ($(filter all build-bl31,$(MAKECMDGOALS)),)
 tf-deps += build-bl31
 endif
+
+ifneq (,$(BL32))
 ifneq ($(filter all build-bl32,$(MAKECMDGOALS)),)
 tf-deps += build-bl32
 endif
+endif
+
 ifneq ($(filter all build-bl33,$(MAKECMDGOALS)),)
 tf-deps += build-bl33
 endif
@@ -229,11 +246,18 @@ endif
 build-fip:: $(tf-deps)
 build-fip $(FIP)::
 	$(call arm-tf-make, fip)
+	$(Q)cp $(FIP) /media/sf_dnld/96b/my/
 
 clean-bl1-bl2-bl31-fip:
-	$(ECHO) '  CLEAN   edk2/BaseTools'
+	$(ECHO) '  CLEAN   $@'
 	$(Q)export $(ARMTF_EXPORTS) ; \
-	    $(MAKE) -C arm-trusted-firmware $(ARMTF_FLAGS) clean
+	    $(MAKE) -C arm-trusted-firmware $(ARMTF_FLAGS) clean realclean
+
+.PHONY: build-fip-nobl32
+build-fip-nobl32:: $(tf-deps)
+build-fip-nobl32 $(FIP)::
+	$(call arm-tf-make-nobl32, fip)
+	$(Q)cp $(FIP) /media/sf_dnld/96b/my/fip_nobl32.bin
 
 #
 # l-loader
@@ -258,16 +282,20 @@ endif
 .PHONY: build-lloader
 build-lloader:: $(lloader-deps)
 build-lloader $(LLOADER)::
-	$(ECHO) '  BUILD   build-lloader'
-	$(Q)$(MAKE) -C l-loader BL1=$(PWD)/$(BL1) l-loader.bin
+	$(ECHO) '  BUILD   build-lloader build-ptable'
+	$(Q)ln -s $(PWD)/$(BL1) l-loader/
+	$(Q)$(MAKE) -C l-loader
+	@#$(Q)$(MAKE) -C l-loader BL1=$(PWD)/$(BL1) l-loader.bin
 
 build-ptable $(PTABLE):
-	$(ECHO) '  BUILD   build-ptable'
-	$(Q)$(MAKE) -C l-loader ptable.img
+	$(ECHO) '  BUILD   build-ptable build-lloader'
+	$(Q)$(MAKE) -C l-loader
+	@#$(Q)$(MAKE) -C l-loader ptable.img
 
 clean-lloader-ptable:
 	$(ECHO) '  CLEAN   $@'
 	$(Q)$(MAKE) -C l-loader clean
+	$(Q)rm -f ptable.img prm_ptable.img sec_ptable.img
 
 #
 # Linux/DTB
@@ -282,24 +310,31 @@ DTB = linux/arch/arm64/boot/dts/hi6220-hikey.dtb
 .PHONY: build-linux
 build-linux $(LINUX): linux/.config $(aarch64-linux-gnu-gcc)
 	$(ECHO) '  BUILD   build-linux'
-	$(Q)flock .linuxbuildinprogress $(MAKE) -C linux ARCH=arm64 LOCALVERSION= Image
+	$(ECHO) 'CROSS_COMPILE = $(CROSS_COMPILE)'
+	$(Q)flock .linuxbuildinprogress $(MAKE) -C linux ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LOCALVERSION= Image modules dtbs
 
 build-dtb $(DTB): linux/.config
 	$(ECHO) '  BUILD   build-dtb'
-	$(Q)flock .linuxbuildinprogress $(MAKE) -C linux ARCH=arm64 LOCALVERSION= dtbs
+	$(ECHO) 'CROSS_COMPILE = $(CROSS_COMPILE)'
+	$(Q)flock .linuxbuildinprogress $(MAKE) -C linux ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LOCALVERSION= dtbs
 
 linux/.config:
 	$(ECHO) '  BUILD   $@'
+	$(ECHO) 'CROSS_COMPILE = $(CROSS_COMPILE)'
 	$(Q)cd linux && ARCH=arm64 scripts/kconfig/merge_config.sh \
 	    arch/arm64/configs/defconfig ../kernel.config
 
 linux/usr/gen_init_cpio: linux/.config
 	$(ECHO) '  BUILD   $@'
-	$(Q)$(MAKE) -C linux/usr ARCH=arm64 gen_init_cpio
+	$(ECHO) 'CROSS_COMPILE = $(CROSS_COMPILE)'
+	$(Q)$(MAKE) -C linux/usr ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gen_init_cpio
 
 clean-linux-dtb:
-	$(ECHO) '  CLEAN   arm-trusted-firmware'
-	$(Q)$(MAKE) -C linux ARCH=arm64 clean
+	$(ECHO) '  CLEAN   $@'
+	$(ECHO) 'CROSS_COMPILE = $(CROSS_COMPILE)'
+	$(Q)$(MAKE) -C linux ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- clean mrproper
+	@#extra cleaning
+	$(Q)$(MAKE) -C linux ARCH=arm64 clean mrproper
 	$(Q)rm -f .linuxbuildinprogress
 
 #
@@ -324,14 +359,18 @@ build-boot-img $(BOOT-IMG)::
 	$(ECHO) '  GEN    $(BOOT-IMG)'
 	$(Q)sudo -p "[sudo] Password:" true
 	$(Q)if [ -d .tmpbootimg ] ; then sudo rm -rf .tmpbootimg ; fi
+	$(Q)echo "console=ttyAMA0,115200n8 earlycon=pl011,0xf8015000 root=/dev/mmcblk0p7 rootwait rw verbose debug user_debug=31 loglevel=8 dtb=hi6220-hikey.dtb initrd=initrd.img" > cmdline
 	$(Q)mkdir -p .tmpbootimg
 	$(Q)dd if=/dev/zero of=$(BOOT-IMG) bs=512 count=131072 status=none
 	$(Q)sudo mkfs.fat -n "BOOT IMG" $(BOOT-IMG) >/dev/null
 	$(Q)sudo mount -o loop,rw,sync $(BOOT-IMG) .tmpbootimg
 	$(Q)sudo cp $(LINUX) $(DTB) .tmpbootimg
 	$(Q)sudo cp $(INITRAMFS) .tmpbootimg/initrd.img
+	$(Q)sudo cp cmdline .tmpbootimg
+	$(Q)sudo cp $(FASTBOOT) .tmpbootimg
 	$(Q)sudo umount .tmpbootimg
 	$(Q)sudo rm -rf .tmpbootimg
+	$(Q)mv $(BOOT-IMG) /media/sf_dnld/96b/my/boot-me.img
 
 clean-boot-img:
 	$(ECHO) '  CLEAN   $@'
@@ -394,6 +433,13 @@ cleaner-nvme:
 	$(Q)rm -f $(NVME)
 
 #
+# OP-TEE stable commits
+#
+#STABLE_CLIENT_COMMIT = 2893f86b0925bc6be358a6913a07773b2b909ee3
+#STABLE_LINUXDRIVER_COMMIT = eb4ea6b1094ce3452c376c12a529178d202d229b
+#STABLE_OPTEE_TEST_COMMIT = 71e52146d2cef1325dea14099255ac06c13fe63d
+
+#
 # OP-TEE Linux driver
 #
 
@@ -408,6 +454,10 @@ endif
 build-optee-linuxdriver:: $(optee-linuxdriver-deps)
 build-optee-linuxdriver $(optee-linuxdriver-files):: $(aarch64-linux-gnu-gcc)
 	$(ECHO) '  BUILD   build-optee-linuxdriver'
+	$(Q)cd optee_linuxdriver
+	@#err ref not a tree
+	@#$(Q)git checkout $(STABLE_LINUXDRIVER_COMMIT) 
+	$(Q)cd ..
 	$(Q)$(MAKE) -C linux \
 	   ARCH=arm64 \
 	   LOCALVERSION= \
@@ -429,7 +479,12 @@ clean-optee-linuxdriver:
 .PHONY: build-optee-client
 build-optee-client: $(aarch64-linux-gnu-gcc)
 	$(ECHO) '  BUILD   $@'
+	$(Q)cd optee_client
+	@#err ref not a tree
+	@#$(Q)git checkout $(STABLE_CLIENT_COMMIT) 
+	$(Q)cd ..
 	$(Q)$(MAKE) -C optee_client
+	$(ECHO) '  Ignore ROOTFS_DIR undefined warning!'
 
 clean-optee-client:
 	$(ECHO) '  CLEAN   $@'
@@ -439,7 +494,7 @@ clean-optee-client:
 # OP-TEE OS
 #
 
-optee-os-flags := CROSS_COMPILE=arm-linux-gnueabihf- PLATFORM=hikey CFG_TEE_CORE_LOG_LEVEL=4
+optee-os-flags := CROSS_COMPILE=arm-linux-gnueabihf- PLATFORM=hisi PLATFORM_FLAVOR=hikey CFG_TEE_CORE_LOG_LEVEL=4
 
 .PHONY: build-bl32
 build-bl32:
@@ -450,7 +505,18 @@ build-bl32:
 clean-bl32:
 	$(ECHO) '  CLEAN   $@'
 	$(Q)$(MAKE) -C optee_os $(optee-os-flags) clean
+	$(Q)rm -rf optee_os/out
 
+.PHONY: build-opteeos
+build-opteeos:
+	$(ECHO) '  BUILD   $@'
+	$(Q)$(MAKE) -C my_optee_os $(optee-os-flags)
+
+.PHONY: clean-opteeos
+clean-opteeos:
+	$(ECHO) '  CLEAN   $@'
+	$(Q)$(MAKE) -C my_optee_os $(optee-os-flags) clean
+	$(Q)rm -rf my_optee_os/out
 
 #
 # OP-TEE tests (xtest)
@@ -463,7 +529,7 @@ clean: clean-optee-test
 
 optee-test-flags := CFG_CROSS_COMPILE="$(PWD)/toolchains/$(AARCH64_GCC_DIR)/bin/aarch64-linux-gnu-" \
 		    CFG_TA_CROSS_COMPILE=arm-linux-gnueabihf- \
-		    CFG_PLATFORM=hikey CFG_DEV_PATH=$(PWD) \
+		    CFG_PLATFORM=hisi CFG_DEV_PATH=$(PWD) \
 		    CFG_ROOTFS_DIR=$(PWD)/out
 
 ifneq ($(filter all build-bl32,$(MAKECMDGOALS)),)
@@ -478,6 +544,10 @@ endif
 build-optee-test:: $(optee-test-deps)
 build-optee-test:: $(aarch64-linux-gnu-gcc)
 	$(ECHO) '  BUILD   $@'
+	$(Q)cd optee_test
+	@#err ref not a tree
+	@#$(Q)git checkout $(STABLE_OPTEE_TEST_COMMIT) 
+	$(Q)cd ..
 	$(Q)$(MAKE) -C optee_test $(optee-test-flags)
 
 # FIXME:

@@ -34,3 +34,5 @@ ${IFTESTS}file /lib/optee_armtz/e6a33ed4-562b-463a-bb7eff5e15a493c8.ta ${TOP}/ou
 # strace tool
 file /bin/strace ${TOP}/strace/strace 755 0 0
 
+# 32b test app
+file /bin/abc.out ${TOP}/abc.out 755 0 0
