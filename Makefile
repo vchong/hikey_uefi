@@ -199,7 +199,8 @@ BL30 = mcuimage.bin
 BL31 = $(ATF)/bl31.bin
 # Comment to not include OP-TEE OS image in fip.bin
 #BL32 = optee_os/out/arm32-plat-hisi/core/tee.bin
-BL32 = optee_os/out/arm-plat-hisi/core/tee.bin
+#BL32 = optee_os/out/arm-plat-hisi/core/tee.bin
+BL32 = optee_os/out/arm-plat-hikey/core/tee.bin
 FIP = $(ATF)/fip.bin
 
 ARMTF_NOBL32_FLAGS := PLAT=hikey LOG_LEVEL=50 DEBUG=$(ATF_DEBUG) V=1 CRASH_REPORTING=1
@@ -519,7 +520,30 @@ clean-optee-client:
 # OP-TEE OS
 #
 
-optee-os-flags := CROSS_COMPILE=arm-linux-gnueabihf- PLATFORM=hisi PLATFORM_FLAVOR=hikey CFG_TEE_CORE_LOG_LEVEL=3 #CFG_TEE_TA_LOG_LEVEL=3
+#optee-os-flags := CROSS_COMPILE=arm-linux-gnueabihf- PLATFORM=hisi PLATFORM_FLAVOR=hikey CFG_TEE_CORE_LOG_LEVEL=3 #CFG_TEE_TA_LOG_LEVEL=3
+
+ARM64 = 1
+ifeq ($(ARM64),1)
+optee-os-flags := CROSS_COMPILE='$(CROSS_COMPILE)'
+optee-os-flags += CFG_ARM64_core=y
+
+#optee-os-flags += NOWERROR=1
+
+#CFG_ARM32_core not explicitly set to y so must no need to set to n here
+#CFG_ARM32_user_ta explicitly set to y in platform_flags.mk to must set to n here or in the file
+
+#set in platform_flags.mk
+#optee-os-flags += CFG_ARM64_user_ta=y
+#optee-os-flags += CFG_ARM32_user_ta=n
+else
+optee-os-flags := CROSS_COMPILE=arm-linux-gnueabihf-
+optee-os-flags += PLATFORM_FLAVOR=hikey
+endif
+optee-os-flags += PLATFORM=hikey
+optee-os-flags += DEBUG=1
+optee-os-flags += CFG_TEE_CORE_LOG_LEVEL=3 # 0=none 1=err 2=info 3=debug 4=flow
+#optee-os-flags += CFG_WITH_PAGER=y
+#optee-os-flags += CFG_TEE_TA_LOG_LEVEL=3
 
 optee-os-notrace-flags := CROSS_COMPILE=arm-linux-gnueabihf- PLATFORM=hisi PLATFORM_FLAVOR=hikey CFG_TEE_CORE_LOG_LEVEL=0
 
@@ -553,9 +577,14 @@ all: build-optee-test
 clean: clean-optee-test
 
 #new flags, but I do NOT have access to the new tests!
+#use this for hikey64 and optee_test branch jf_hikey
 #optee-test-flags := CROSS_COMPILE_HOST="$(PWD)/toolchains/$(AARCH64_GCC_DIR)/bin/aarch64-linux-gnu-" \
 		    CROSS_COMPILE_TA=arm-linux-gnueabihf- \
 		    TA_DEV_KIT_DIR=$(PWD)/optee_os/out/arm-plat-hisi/export-user_ta \
+		    O=$(PWD)/optee_test/out #CFG_TEE_TA_LOG_LEVEL=3
+optee-test-flags := CROSS_COMPILE_HOST="$(PWD)/toolchains/$(AARCH64_GCC_DIR)/bin/aarch64-linux-gnu-" \
+		    CROSS_COMPILE_TA=arm-linux-gnueabihf- \
+		    TA_DEV_KIT_DIR=$(PWD)/optee_os/out/arm-plat-hikey/export-user_ta \
 		    O=$(PWD)/optee_test/out #CFG_TEE_TA_LOG_LEVEL=3
 
 #combined flags
@@ -569,10 +598,18 @@ clean: clean-optee-test
 		    O=$(PWD)/optee_test/out #CFG_TEE_TA_LOG_LEVEL=3
 
 #old flags
-optee-test-flags := CFG_CROSS_COMPILE="$(PWD)/toolchains/$(AARCH64_GCC_DIR)/bin/aarch64-linux-gnu-" \
+#optee-test-flags := CFG_CROSS_COMPILE="$(PWD)/toolchains/$(AARCH64_GCC_DIR)/bin/aarch64-linux-gnu-" \
 		    CFG_TA_CROSS_COMPILE=arm-linux-gnueabihf- \
 		    CFG_PLATFORM=hisi CFG_PLATFORM_FLAVOR=hikey CFG_DEV_PATH=$(PWD) \
 		    CFG_ROOTFS_DIR=$(PWD)/out #CFG_TEE_TA_LOG_LEVEL=3
+#optee-test-flags := CFG_CROSS_COMPILE="$(PWD)/toolchains/$(AARCH64_GCC_DIR)/bin/aarch64-linux-gnu-" \
+		    CFG_TA_CROSS_COMPILE="$(PWD)/toolchains/$(AARCH64_GCC_DIR)/bin/aarch64-linux-gnu-" \
+		    CFG_DEV_PATH=$(PWD) \
+		    CFG_ROOTFS_DIR=$(PWD)/out #CFG_TEE_TA_LOG_LEVEL=3
+#optee-test-flags := CFG_CROSS_COMPILE="$(PWD)/toolchains/$(AARCH64_GCC_DIR)/bin/aarch64-linux-gnu-" \
+                    CFG_TA_CROSS_COMPILE=arm-linux-gnueabihf- \
+		    CFG_DEV_PATH=$(PWD) \
+                    CFG_ROOTFS_DIR=$(PWD)/out #CFG_TEE_TA_LOG_LEVEL=3
 
 ifneq ($(filter all build-bl32,$(MAKECMDGOALS)),)
 optee-test-deps += build-bl32
