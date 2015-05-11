@@ -550,7 +550,12 @@ optee-os-flags += PLATFORM=hisi
 optee-os-flags += PLATFORM_FLAVOR=hikey
 endif
 
+#platform-cflags += -O0
 optee-os-flags += DEBUG=1
+
+#platform-cflags += -Os
+#optee-os-flags += DEBUG=0
+
 optee-os-flags += CFG_TEE_CORE_LOG_LEVEL=3 # 0=none 1=err 2=info 3=debug 4=flow
 #optee-os-flags += CFG_WITH_PAGER=y
 #optee-os-flags += CFG_TEE_TA_LOG_LEVEL=3
