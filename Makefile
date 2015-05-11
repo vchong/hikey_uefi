@@ -523,23 +523,33 @@ clean-optee-client:
 #optee-os-flags := CROSS_COMPILE=arm-linux-gnueabihf- PLATFORM=hisi PLATFORM_FLAVOR=hikey CFG_TEE_CORE_LOG_LEVEL=3 #CFG_TEE_TA_LOG_LEVEL=3
 
 ARM64 = 1
+optee-os-flags := CROSS_COMPILE=arm-linux-gnueabihf-
 ifeq ($(ARM64),1)
-optee-os-flags := CROSS_COMPILE='$(CROSS_COMPILE)'
-optee-os-flags += CFG_ARM64_core=y
+#optee-os-flags := CROSS_COMPILE='$(CROSS_COMPILE)'
 
+#c documentation/build_system.md
+#The CROSS_COMPILE variable can be overridden with **CROSS_COMPILE_core** and
+#**CROSS_COMPILE_user_ta** for TEE Core and Trusted Applications respectively.
+#This is needed if TEE Core and Trusted Application libraries need to be
+#compiled with different compilers due to a mix of 64bit and 32bit code.
+optee-os-flags += CROSS_COMPILE_core=aarch64-linux-gnu-
+optee-os-flags += CFG_ARM64_core=y
 #optee-os-flags += NOWERROR=1
 
 #CFG_ARM32_core not explicitly set to y so must no need to set to n here
 #CFG_ARM32_user_ta explicitly set to y in platform_flags.mk to must set to n here or in the file
-
 #set in platform_flags.mk
 #optee-os-flags += CFG_ARM64_user_ta=y
 #optee-os-flags += CFG_ARM32_user_ta=n
+
+optee-os-flags += PLATFORM=hikey
 else
-optee-os-flags := CROSS_COMPILE=arm-linux-gnueabihf-
+#optee-os-flags := CROSS_COMPILE=arm-linux-gnueabihf-
+
+optee-os-flags += PLATFORM=hisi
 optee-os-flags += PLATFORM_FLAVOR=hikey
 endif
-optee-os-flags += PLATFORM=hikey
+
 optee-os-flags += DEBUG=1
 optee-os-flags += CFG_TEE_CORE_LOG_LEVEL=3 # 0=none 1=err 2=info 3=debug 4=flow
 #optee-os-flags += CFG_WITH_PAGER=y
